@@ -1,0 +1,33 @@
+[Unit]
+Description="CT Agent"
+Documentation="None"
+Requires=network-online.target
+After=network-online.target
+ConditionFileNotEmpty=/etc/ct.conf
+
+[Service]
+Type=simple
+User=root
+Group=root
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+SecureBits=keep-caps
+NoNewPrivileges=yes
+ExecStart=/usr/bin/ct
+ExecReload=/bin/kill --signal HUP $MAINPID
+TimeoutStartSec=0
+Restart=always
+RestartSec=5s
+KillMode=process
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+StartLimitInterval=60
+StartLimitBurst=3
+
+[Install]
+#WantedBy=default.target
+WantedBy=multi-user.target

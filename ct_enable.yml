@@ -1,0 +1,13 @@
+---
+# -----------------------------------------------------------------------------
+- hosts: all
+# -----------------------------------------------------------------------------
+  name: Enable Canary agent
+  tasks:
+# -----------------------------------------------------------------------------
+  - name: Start canary agent if already exists
+    systemd:
+      name: ct
+      state: started
+      enabled: yes
+    ignore_errors: yes

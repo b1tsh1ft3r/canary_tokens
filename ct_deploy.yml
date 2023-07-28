@@ -1,0 +1,98 @@
+---
+# -----------------------------------------------------------------------------
+- hosts: all
+# -----------------------------------------------------------------------------
+  name: Deploy or Update Canary token agent
+  tasks:
+# -----------------------------------------------------------------------------
+  - name: Stop canary agent if already exists
+    systemd:
+      name: ct
+      state: stopped
+      enabled: yes
+    ignore_errors: yes
+# -----------------------------------------------------------------------------
+  - name: Install required packages
+    yum:
+      name: lsof
+      state: latest
+# -----------------------------------------------------------------------------
+  - name: Ensure ct.conf is NOT immutable.
+    file:
+      path: /etc/ct.conf
+      attr: -i
+    ignore_errors: yes
+# -----------------------------------------------------------------------------
+  - name: Copy Canary agent and required config/decoy files into place
+    copy:
+      src: "{{ item.src }}"
+      dest: "{{ item.dest }}"
+      owner: "{{ item.owner }}"
+      group: "{{ item.group }}"
+      mode: "{{ item.mode }}"
+    with_items:
+      - { src: "ct", dest: "/usr/bin/", owner: "root", group: "root", mode: "0500" }
+      - { src: "ct.conf", dest: "/etc/", owner: "root", group: "root", mode: "0600" }
+      - { src: "ct.service", dest: "/etc/systemd/system/", owner: "root", group: "root", mode: "0600" }
+      - { src: "ctcfg", dest: "/usr/bin/", owner: "root", group: "root", mode: "0664" }
+# -----------------------------------------------------------------------------
+  - name: Generate fake data for decoy files
+    shell:
+      cmd: |
+        PASSWORD=$(openssl rand -base64 16)
+        echo ${PASSWORD} > /root/passwords.txt
+        chmod 0777 /root/passwords.txt
+        RANDOM_YEAR=$(shuf -i 18-22 -n1)
+        RANDOM_MONTH=$(shuf -i 1-12 -n1)
+        RANDOM_DAY=$(shuf -i 1-28 -n1)
+        touch -m --date="${RANDOM_YEAR}-${RANDOM_MONTH}-${RANDOM_DAY}" /root/passwords.txt
+
+        "y" | ssh-keygen -t dsa -N "ThisisaPassword!@" -C "root keys" -f /root/id_rsa
+        RANDOM_YEAR=$(shuf -i 18-22 -n1)
+        RANDOM_MONTH=$(shuf -i 1-12 -n1)
+        RANDOM_DAY=$(shuf -i 1-28 -n1)
+        touch -m --date="${RANDOM_YEAR}-${RANDOM_MONTH}-${RANDOM_DAY}" /root/id_rsa
+        touch -m --date="${RANDOM_YEAR}-${RANDOM_MONTH}-${RANDOM_DAY}" /root/id_rsa.pub
+
+        ACCESS_KEY_ID=$(echo "aws_access_key_id = "; tr -dc A-Z </dev/urandom | head -c 20; echo '');
+        SECRET_ACCESS_KEY=$(echo "aws_secret_access_key = ";  tr -dc a-zA-Z+ </dev/urandom | head -c 65; echo '');
+        echo "[default]" > /root/aws_keys
+        echo $ACCESS_KEY_ID >> /root/aws_keys
+        echo $SECRET_ACCESS_KEY >> /root/aws_keys
+        echo "output = json" >> /root/aws_keys
+        echo "region = us-east-2" >> /root/aws_keys
+        RANDOM_YEAR=$(shuf -i 18-22 -n1)
+        RANDOM_MONTH=$(shuf -i 1-12 -n1)
+        RANDOM_DAY=$(shuf -i 1-28 -n1)
+        touch -m --date="${RANDOM_YEAR}-${RANDOM_MONTH}-${RANDOM_DAY}" /root/aws_keys
+
+        # Set access times and suid bit on ctcfg binary
+        RANDOM_YEAR=$(shuf -i 18-22 -n1)
+        RANDOM_MONTH=$(shuf -i 1-12 -n1)
+        RANDOM_DAY=$(shuf -i 1-28 -n1)
+        touch -m --date="${RANDOM_YEAR}-${RANDOM_MONTH}-${RANDOM_DAY}" /usr/bin/ctcfg
+        chmod u+s /usr/bin/ctcfg
+        chmod u+x /usr/bin/ctcfg
+    args:
+      executable: /bin/bash
+# -----------------------------------------------------------------------------
+  - name: systemctl daemon-reload for new ct.service unit file
+    ansible.builtin.systemd:
+      daemon_reload: yes
+# -----------------------------------------------------------------------------
+  - name: Ensure tracing for sys_exit_inotify_add_watch is disabled
+    shell:
+      cmd: echo 0 > /sys/kernel/debug/tracing/events/syscalls/sys_exit_inotify_add_watch/enable
+    args:
+      executable: /bin/bash
+# -----------------------------------------------------------------------------
+  - name: Ensure ct.conf is immutable.
+    file:
+      path: /etc/ct.conf
+      attr: +i
+# -----------------------------------------------------------------------------
+  - name: Enable & Start Canary agent
+    systemd:
+      name: ct
+      state: started
+      enabled: yes
